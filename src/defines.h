@@ -34,7 +34,8 @@
 
 #define OUTPUTSERIAL_BAUD 921600
 
-#define BLUE_LED 28 //Used for signifying "manipulated" data
+#define BLUE_LED PC13
+#define STATUS_LED PC14
 #define TIME_BETWEEN_DIGITIAL_READS 250 //in millis
 
 #define EPStoLKASCanMsgId 0x201

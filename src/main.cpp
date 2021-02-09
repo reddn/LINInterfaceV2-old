@@ -23,7 +23,8 @@ void handleInputReads(){
 		else mainLedBlinkTimer = 2000; 
 		
 		digitalWrite(BLUE_LED,( EPStoLKASBuffer[2] >> 2 ) & B00000001);
-		
+		// digitalWrite(STATUS_LED,!digitalRead(STATUS_LED));
+		digitalToggle(STATUS_LED);
 		if(LkasFromCanChecksumErrorCount > 2){
 			OPSteeringControlMessageStatusPending = false;
 			LkasFromCanFatalError = true;
@@ -44,6 +45,10 @@ void handleInputReads(){
 
                     /*************** S E T U P ***************/
 void setup() {
+	pinMode(BLUE_LED,OUTPUT);
+	pinMode(STATUS_LED, OUTPUT);
+	digitalWrite(STATUS_LED,HIGH);
+	digitalWrite(BLUE_LED,HIGH);
 	EPStoLKAS_Serial.begin(9600,SERIAL_8E1);
 	LKAStoEPS_Serial.begin(9600,SERIAL_8E1);
 	// outputSerial.begin(OUTPUTSERIAL_BAUD);
@@ -57,8 +62,6 @@ void setup() {
 	// pinMode(DIP2,INPUT_PULLUP);
 	// pinMode(DIP5,INPUT_PULLUP); // **disabled, removed from code** DIP 5 is used as a test to disable LIN output...
 	// pinMode(DIP7_SpoofSteeringWheelTorqueData_PIN, INPUT_PULLUP);
-	pinMode(BLUE_LED,OUTPUT);
-	pinMode(LED_BUILTIN, OUTPUT);
 	// canSetup();
 	// FCAN.begin();
 	// FCAN.setBaudRate(500000);
@@ -76,5 +79,5 @@ void loop() {
 		handleLkasFromCanV3();
 	}
   
-
+	handleInputReads();
 }

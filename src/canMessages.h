@@ -8,9 +8,22 @@
 #include "globalExtern.h"
 #include "checksums.h"
 
+#define STM32_CAN_TIR_TXRQ              (1U << 0U)  // Bit 0: Transmit Mailbox Request
+#define STM32_CAN_RIR_RTR               (1U << 1U)  // Bit 1: Remote Transmission Request
+#define STM32_CAN_RIR_IDE               (1U << 2U)  // Bit 2: Identifier Extension
+#define STM32_CAN_TIR_RTR               (1U << 1U)  // Bit 1: Remote Transmission Request
+#define STM32_CAN_TIR_IDE               (1U << 2U)  // Bit 2: Identifier Extension
+
+#define CAN_EXT_ID_MASK                 0x1FFFFFFFU
+#define CAN_STD_ID_MASK                 0x000007FFU
+
+
+
 void buildSteerMotorTorqueCanMsg();
 void buildSteerStatusCanMsg();
 void handleLkasFromCanV3();
+uint8_t getNextOpenTxMailbox();
+void sendCanMsg(CAN_msg_t*);
 
 
 // BO_ 427 STEER_MOTOR_TORQUE: 3 EPS
@@ -26,7 +39,7 @@ void handleLkasFromCanV3();
 
 void buildSteerMotorTorqueCanMsg(){ //TODO: add to decclaration
 	//outputSerial.print("\nSendingSteer TOrque Can MSg");
-	CAN_message_t msg; // move this to a global to save the assignment of id and len
+	CAN_msg_t msg; // move this to a global to save the assignment of id and len
 	msg.id = 427;
 	msg.len = 3;
 	msg.buf[0] = (EPStoLKASBuffer[2] << 4 ) & B1000000;  //1 LSB bit of bigSteerTorque 
@@ -39,7 +52,7 @@ void buildSteerMotorTorqueCanMsg(){ //TODO: add to decclaration
 	msg.buf[2] = (OPCanCounter << 4 ); // put in the counter
 	msg.buf[2] |= honda_compute_checksum(&msg.buf[0],3,(unsigned int)msg.id);
 	// FCAN.write(msg);
-	can.transmit(msg.id,msg.buf, msg.len);
+	sendCanMsg(&msg);
 }
 
 ///// the only thing in this DBC that should be used is steeor_troque_sensor
@@ -61,7 +74,7 @@ void buildSteerMotorTorqueCanMsg(){ //TODO: add to decclaration
 void buildSteerStatusCanMsg(){ //TODO: add to decclaration
 	
 	// outputSerial.print("\nsending Steer Status Cna MSg");
-	CAN_message_t msg; // move this to a global so you dont have to re assign the id and len
+	CAN_msg_t msg; // move this to a global so you dont have to re assign the id and len
 	msg.id = 399;
 	msg.len = 3;
 	msg.buf[0] = EPStoLKASBuffer[0] << 5;   // 3 LSB of BigSteerTorque (4bit)
@@ -78,7 +91,7 @@ void buildSteerStatusCanMsg(){ //TODO: add to decclaration
 	msg.buf[2] = (OPCanCounter << 4 ); // put in the counter
 	msg.buf[2] |= honda_compute_checksum(&msg.buf[0],3,(unsigned int) msg.id);
 	// FCAN.write(msg);
-	can.transmit(msg.id,msg.buf, msg.len);
+	sendCanMsg(&msg);
 }
 
 
@@ -163,5 +176,52 @@ void handleLkasFromCanV3(){
 	OPTimeLastCANRecieved = millis();
 }
 
+uint8_t getNextOpenTxMailbox(){
+	// uint8_t openMailbox =255;
+	//can1 base 0x4000 6400
+	//offset 0x08
+	//newbase 0x40006400b
+	// uint8_t num = (CAN1->TSR >> 26) & 0x03;
+	// for(uint8_t a =0 ; a < 3; a++){
+	// 	if( (num >> a) == 1){
+	// 		return a;
+	// 	} 
+	// }
+	if ((CAN1->TSR&CAN_TSR_TME0) == CAN_TSR_TME0_Msk) return 0;
+	if ((CAN1->TSR&CAN_TSR_TME1) == CAN_TSR_TME1_Msk) return 1;
+	if ((CAN1->TSR&CAN_TSR_TME2) == CAN_TSR_TME2_Msk) return 2;
+	return 255;
+}
+
+void sendCanMsg(CAN_msg_t *CAN_tx_msg){
+// 	if (CAN_tx_msg->format == EXTENDED_FORMAT) { // Extended frame format
+//       out = ((CAN_tx_msg->id & CAN_EXT_ID_MASK) << 3U) | STM32_CAN_TIR_IDE;
+//   }
+//   else {                                       // Standard frame format
+//       out = ((CAN_tx_msg->id & CAN_STD_ID_MASK) << 21U);
+//   }
+uint32_t out = (CAN_tx_msg->id & CAN_STD_ID_MASK) << 21U;
+//   // Remote frame
+//   if (CAN_tx_msg->type == REMOTE_FRAME) {
+//       out |= STM32_CAN_TIR_RTR;
+//   }
+uint8_t mailbox = getNextOpenTxMailbox();
+if(mailbox > 3) return;
+CAN1->sTxMailBox[mailbox].TDTR &= ~(0xF);
+CAN1->sTxMailBox[mailbox].TDTR |= CAN_tx_msg->len & 0xFUL;
+
+CAN1->sTxMailBox[mailbox].TDLR  = 	(((uint32_t) CAN_tx_msg->buf[3] << 24) |
+									((uint32_t) CAN_tx_msg->buf[2] << 16) |
+									((uint32_t) CAN_tx_msg->buf[1] <<  8) |
+									((uint32_t) CAN_tx_msg->buf[0]      ));
+CAN1->sTxMailBox[mailbox].TDHR  = 	(((uint32_t) CAN_tx_msg->buf[7] << 24) |
+									((uint32_t) CAN_tx_msg->buf[6] << 16) |
+									((uint32_t) CAN_tx_msg->buf[5] <<  8) |
+									((uint32_t) CAN_tx_msg->buf[4]      ));
+
+// Send Go
+CAN1->sTxMailBox[mailbox].TIR = out | STM32_CAN_TIR_TXRQ;
+return;
+}
 
 #endif
